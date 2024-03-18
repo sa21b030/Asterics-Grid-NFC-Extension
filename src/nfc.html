@@ -1,0 +1,71 @@
+<html>
+    <header>
+        <img alt="Vue logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
+    
+        <title>NFC</title>
+      </header>
+    
+      <main>
+        <input type="text" id="msg" placeholder="NFC message">
+        <button type="button" onclick="onClickRead()">read</button>
+        <button type="button" onclick="onClickWrite()">write</button>
+        <textarea id="log" rows="10"></textarea>
+      </main>
+</html>
+
+<script>
+    var msg = ""
+    var log = ""
+
+
+
+   
+    function onClickRead() {
+      const ndef = new NDEFReader();
+      ndef.scan().then(() => {
+        log = "Scan started successfully.";
+        ndef.onreadingerror = () => {
+          log += "\nCannot read data from the NFC tag. Try another one?";
+          document.getElementById("log").value = log; 
+        };
+        ndef.onreading = event => {
+          const message = event.message;
+          const decoder = new TextDecoder();
+          for (const record of message.records) {
+           // const record = message.records;
+            log += "\nRecord type:  " + record.recordType;
+            log += "\nMIME type:    " + record.mediaType;
+            log += "\nRecord id:    " + record.id;
+            document.getElementById("log").value = log; 
+            switch (record.recordType) {
+              case "text":
+                msg = decoder.decode(record.data);
+                document.getElementById("msg").value = msg; 
+                break;
+              case "url":
+                // TODO: Read URL record with record data.
+                break;
+              default:
+                // TODO: Handle other records with record data.
+            }
+          }
+        };
+      }).catch(error => {
+        log += `\nError! Scan failed to start: ${error}.`;
+        document.getElementById("log").value = log; 
+      });
+    }
+    function onClickWrite() {
+      log = "write started successfully";
+      const ndef = new NDEFReader();
+      ndef.write(
+        document.getElementById("msg").value
+      ).then(() => {
+        log += "\nMessage written.";
+      }).catch(error => {
+        log += `\nWrite failed :-( try again: ${error}.`;
+      });
+    }
+  
+
+</script>
