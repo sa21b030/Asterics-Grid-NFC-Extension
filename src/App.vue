@@ -1,20 +1,27 @@
 <script setup>
-import { ref } from 'vue'
-import HelloWorld from './components/HelloWorld.vue'
-import TheWelcome from './components/TheWelcome.vue'
-
-var msg = ref("")
-var text = ref("")
-var log = ref("")
-var isURL = ref(false)
-
-
-
-
-   
-    function onClickRead() {
+  import { ref } from 'vue'
+  
+  class Entry {
+    constructor(type, value) {
+      this.type = type;
+      this.value = value;
+    }
+  }
+  
+  var title = ref("");
+  var entries = ref([new Entry("a", "av"), new Entry("b", "bv")]);
+  var log = ref("");
+  var abortController = null;
+    
+  function onClickRead() {
+    if (abortController!=null) { //read is active
+      abortController.abort();
+      abortController = null;
+    }
+    else {
+      abortController = new AbortController();
       const ndef = new NDEFReader();
-      ndef.scan().then(() => {
+      ndef.scan({ signal: abortController.signal }).then(() => {
         log.value = "Scan started successfully.";
         ndef.onreadingerror = () => {
           log.value += "\nCannot read data from the NFC tag. Try another one?";
@@ -23,21 +30,18 @@ var isURL = ref(false)
           const message = event.message;
           const decoder = new TextDecoder();
           for (const record of message.records) {
-           // const record = message.records;
             log.value += "\nRecord type:  " + record.recordType;
             log.value += "\nMIME type:    " + record.mediaType;
             log.value += "\nRecord id:    " + record.id;
             switch (record.recordType) {
               case "text":
-                isURL.value = false;
-                msg.value = decoder.decode(record.data);
+                title.value = decoder.decode(record.data);
                 break;
               case "url":
-                isURL.value = true;
-                msg.value = decoder.decode(record.data);
+                title.value = decoder.decode(record.data);
                 break;
               default:
-                // TODO: Handle other records with record data.
+                log.value += "\nRead unsupported record type."
             }
           }
         };
@@ -45,38 +49,54 @@ var isURL = ref(false)
         log.value += `\nError! Scan failed to start: ${error}.`;
       });
     }
-    function onClickWrite() {
-      log.value = "write started successfully";
-      const ndef = new NDEFReader();
-      ndef.write(
-        isURL.value ? { records: [{recordType: "text", data: msg.value},{recordType: "url", data: }] } : msg.value
-      ).then(() => {
-        log.value += "\nMessage written.";
-      }).catch(error => {
-        log.value += `\nWrite failed :-( try again: ${error}.`;
-      });
-    }
-  
+  }
+
+  function onClickWrite() {
+    log.value = "write started successfully";
+    const ndef = new NDEFReader();
+    ndef.write(title.value).then(() => {
+      log.value += "\nMessage written.";
+    }).catch(error => {
+      log.value += `\nWrite failed :-( try again: ${error}.`;
+    });
+  }
+
+  function addEntry(index) {
+    entries.value.splice(index,0,new Entry("", ""));
+  }
+
+  function removeEntry(index) {
+    entries.value.splice(index,1);
+  }
 
 </script>
 
 <template>
   <header>
-    <img alt="Vue logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
-
-    <div class="wrapper">
-      <HelloWorld msg="You did it!" />
-    </div>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <img alt="Asterics logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
   </header>
 
   
   <main>
-    <input type="checkbox" id="is_url" v-model="isURL">URL</input>
-    <input type="text" placeholder="NFC message" v-model="msg">
-    <input type="text" placeholder="NFC message" v-model="text">
-    <button type="button" @click="onClickRead">read</button>
-    <button type="button" @click="onClickWrite">write</button>
-    <textarea rows="10"  v-model="log"></textarea>
+    <input type="text" id="title" placeholder="Title" v-model="title">
+    <i class="fa fa-plus-square-o" @click="addEntry(0)"></i>
+    <div id="entries">
+      <template v-for="(entry, index) in entries" :key="index">
+        <input type="text" :id="'entry_type_'+index" v-model="entries[index].type">
+        <input type="text" :id="'entry_value_'+index" v-model="entries[index].value">
+        <input type="text" :value="index">
+        <i class="fa fa-trash-o" @click="removeEntry(index)"></i>
+        <i class="fa fa-plus-square-o" @click="addEntry(index+1)"></i>
+      </template>
+    </div>
+    <div id="buttons">
+      <button type="button" @click="onClickRead"><span v-if="abortController!=null">stop </span> read</button>
+      <button type="button" @click="onClickWrite">write</button>
+    </div>
+    <div id ="log">
+      <textarea rows="10"  v-model="log"></textarea>
+    </div>
   </main>
 </template>
 
