@@ -1,6 +1,23 @@
 <script setup>
   import { ref } from 'vue'
   
+  // comment below definitions when running on phone
+  /*
+  class NDEFRecord {
+    constructor(options) {
+      this.recordType = options.recordType;
+      this.data = options.data;
+    }
+  }
+
+  class NDEFMessage {
+    constructor(records) {
+      this.records = records;
+    }
+  }
+  */
+  // comment above definitions when running on phone
+
   class Entry {
     constructor(type, value) {
       this.type = type;
@@ -9,9 +26,13 @@
   }
   
   var title = ref("");
-  var entries = ref([new Entry("a", "av"), new Entry("b", "bv")]);
+  var entries = ref([]);
   var log = ref("");
   var abortController = null;
+
+  const typeDomain = "asterics.eu";
+  const typeSelections = ["speech", "sound", "image", "info", "link"];
+  const typeDefault = typeSelections[2];
     
   function onClickRead() {
     if (abortController!=null) { //read is active
@@ -27,23 +48,7 @@
           log.value += "\nCannot read data from the NFC tag. Try another one?";
         };
         ndef.onreading = event => {
-          const message = event.message;
-          const decoder = new TextDecoder();
-          for (const record of message.records) {
-            log.value += "\nRecord type:  " + record.recordType;
-            log.value += "\nMIME type:    " + record.mediaType;
-            log.value += "\nRecord id:    " + record.id;
-            switch (record.recordType) {
-              case "text":
-                title.value = decoder.decode(record.data);
-                break;
-              case "url":
-                title.value = decoder.decode(record.data);
-                break;
-              default:
-                log.value += "\nRead unsupported record type."
-            }
-          }
+          decodeNDEFMessage(event.message);
         };
       }).catch(error => {
         log.value += `\nError! Scan failed to start: ${error}.`;
@@ -54,7 +59,7 @@
   function onClickWrite() {
     log.value = "write started successfully";
     const ndef = new NDEFReader();
-    ndef.write(title.value).then(() => {
+    ndef.write(encodeNDEFMessage()).then(() => {
       log.value += "\nMessage written.";
     }).catch(error => {
       log.value += `\nWrite failed :-( try again: ${error}.`;
@@ -62,11 +67,42 @@
   }
 
   function addEntry(index) {
-    entries.value.splice(index,0,new Entry("", ""));
+    entries.value.splice(index,0,new Entry(typeDefault, ""));
   }
 
   function removeEntry(index) {
     entries.value.splice(index,1);
+  }
+
+  function encodeNDEFMessage() {
+    const records = [new NDEFRecord({ recordType: "text", data: title.value })];
+    for (const entry of entries.value)
+      records.push(new NDEFRecord({ recordType: typeDomain+":"+entry.type, data: entry.value }));
+    let message = new NDEFMessage(records);
+    return message;
+  }
+
+  function decodeNDEFMessage(message) {
+    const decoder = new TextDecoder();
+    let first = true;
+    for (const record of message.records) {
+      if (first) {
+        entries.value = [];
+        if (record.recordType != "text") {
+          log.value += "\nMessage decoding failed: first entry must have recordType \"text\"";
+          title.value = "";
+          return;
+        }
+        title.value = decoder.decode(record.data);
+        first = false;
+      }
+      else {
+        if (!record.recordType.startsWith(typeDomain+":"))
+          log.value += "\nMessage decoding failed: entries must have recordType in asterics domain";
+        else
+          entries.value.push(new Entry(record.recordType.substr(typeDomain.length+1), decoder.decode(record.data)));
+      }
+    }
   }
 
 </script>
@@ -74,7 +110,7 @@
 <template>
   <header>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <img alt="Asterics logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
+    <img alt="Asterics logo" class="logo" src="./assets/logo.png" width="125" height="125" />
   </header>
 
   
@@ -83,11 +119,16 @@
     <i class="fa fa-plus-square-o" @click="addEntry(0)"></i>
     <div id="entries">
       <template v-for="(entry, index) in entries" :key="index">
-        <input type="text" :id="'entry_type_'+index" v-model="entries[index].type">
-        <input type="text" :id="'entry_value_'+index" v-model="entries[index].value">
-        <input type="text" :value="index">
-        <i class="fa fa-trash-o" @click="removeEntry(index)"></i>
-        <i class="fa fa-plus-square-o" @click="addEntry(index+1)"></i>
+        <div id="'entry_'+index">
+          <select :id="'entry_type_'+index" v-model="entries[index].type">
+            <template v-for="type in typeSelections" :key="type">
+              <option :value="type">{{ type }}</option>
+            </template>
+          </select>
+          <input type="text" :id="'entry_value_'+index" placeholder="Value" v-model="entries[index].value">
+          <i class="fa fa-trash-o" @click="removeEntry(index)"></i>
+          <i class="fa fa-plus-square-o" @click="addEntry(index+1)"></i>
+        </div>
       </template>
     </div>
     <div id="buttons">
