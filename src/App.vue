@@ -1,23 +1,12 @@
+/* Links
+https://upload.wikimedia.org/wikipedia/commons/2/25/Adult_Male_Lion.jpg
+http://www.tunghai74.org/forums/movie/MGM-Lion-Roar.mp3
+https://de.wikipedia.org/wiki/L%C3%B6we
+Links end */
+
 <script setup>
   import { ref } from 'vue'
   
-  // comment below definitions when running on phone
-  /*
-  class NDEFRecord {
-    constructor(options) {
-      this.recordType = options.recordType;
-      this.data = options.data;
-    }
-  }
-
-  class NDEFMessage {
-    constructor(records) {
-      this.records = records;
-    }
-  }
-  */
-  // comment above definitions when running on phone
-
   class Entry {
     constructor(type, value) {
       this.type = type;
@@ -29,12 +18,27 @@
   var entries = ref([]);
   var log = ref("");
   var abortController = null;
+  var modeProgram = ref(true);
+  var audio = null;
+
+  var store = "";  //for testing only
 
   const typeDomain = "asterics.eu";
   const typeSelections = ["speech", "sound", "image", "info", "link"];
-  const typeDefault = typeSelections[2];
+  const typeSpeech = "speech";
+  const typeSound = "sound";
+  const typeImage = "image";
+  const typeInfo = "info";
+  const typeLink = "link";
+  const typeDefault = typeImage;
+
+  const languageGerman = "de-DE";
     
   function onClickRead() {
+    /* for testing only */
+    decodeNDEFMessage(store);
+    return;
+    /* */
     if (abortController!=null) { //read is active
       abortController.abort();
       abortController = null;
@@ -57,6 +61,10 @@
   }
 
   function onClickWrite() {
+    /* for testing only */
+    store = structuredClone(encodeNDEFMessage());
+    return;
+    /* */
     log.value = "write started successfully";
     const ndef = new NDEFReader();
     ndef.write(encodeNDEFMessage()).then(() => {
@@ -64,6 +72,27 @@
     }).catch(error => {
       log.value += `\nWrite failed :-( try again: ${error}.`;
     });
+  }
+
+  function onClickChangeMode() {
+    modeProgram.value = !modeProgram.value;
+    if (!modeProgram.value) {
+      if (abortController==null) onClickRead();
+      const sounds = entries.value.filter((item)=>item.type==typeSound);
+      if (sounds.length > 0) {
+        if (audio == null) 
+          audio = new Audio();
+        console.log("should play: "+sounds[0].value);
+        audio.src = sounds[0].value;
+        audio.play();
+      }
+      const textsToSpeeech = entries.value.filter((item)=>item.type==typeSpeech);
+      if (textsToSpeeech.length > 0) {
+        let utterance = new SpeechSynthesisUtterance(textsToSpeeech[0].value);
+        utterance.lang = languageGerman;
+        speechSynthesis.speak(utterance);
+      }
+    }
   }
 
   function addEntry(index) {
@@ -75,11 +104,11 @@
   }
 
   function encodeNDEFMessage() {
-    const records = [new NDEFRecord({ recordType: "text", data: title.value })];
+    const encoder = new TextEncoder();
+    const records = [{ recordType: "text", data: encoder.encode(title.value) }];
     for (const entry of entries.value)
-      records.push(new NDEFRecord({ recordType: typeDomain+":"+entry.type, data: entry.value }));
-    let message = new NDEFMessage(records);
-    return message;
+      records.push({ recordType: typeDomain+":"+entry.type, data: encoder.encode(entry.value), mediaType: "" });
+    return { records: records };
   }
 
   function decodeNDEFMessage(message) {
@@ -115,29 +144,52 @@
 
   
   <main>
-    <input type="text" id="title" placeholder="Title" v-model="title">
-    <i class="fa fa-plus-square-o" @click="addEntry(0)"></i>
-    <div id="entries">
-      <template v-for="(entry, index) in entries" :key="index">
-        <div id="'entry_'+index">
-          <select :id="'entry_type_'+index" v-model="entries[index].type">
-            <template v-for="type in typeSelections" :key="type">
-              <option :value="type">{{ type }}</option>
-            </template>
-          </select>
-          <input type="text" :id="'entry_value_'+index" placeholder="Value" v-model="entries[index].value">
-          <i class="fa fa-trash-o" @click="removeEntry(index)"></i>
-          <i class="fa fa-plus-square-o" @click="addEntry(index+1)"></i>
-        </div>
-      </template>
+    <div id="program" v-if="modeProgram">
+      <input type="text" id="title" placeholder="Title" v-model="title">
+      <i class="fa fa-plus-square-o" @click="addEntry(0)"></i>
+      <div id="entries">
+        <template v-for="(entry, index) in entries" :key="index">
+          <div id="'entry_'+index">
+            <select :id="'entry_type_'+index" v-model="entries[index].type">
+              <template v-for="theType in typeSelections" :key="theType">
+                <option :value="theType">{{ theType }}</option>
+              </template>
+            </select>
+            <input type="text" :id="'entry_value_'+index" placeholder="Value" v-model="entries[index].value">
+            <i class="fa fa-trash-o" @click="removeEntry(index)"></i>
+            <i class="fa fa-plus-square-o" @click="addEntry(index+1)"></i>
+          </div>
+        </template>
+      </div>
+      <div id="buttons">
+        <button type="button" @click="onClickRead"><span v-if="abortController!=null">stop </span> read</button>
+        <button type="button" @click="onClickWrite">write</button>
+      </div>
+      <div id ="log">
+        <textarea rows="10"  v-model="log"></textarea>
+      </div>
     </div>
-    <div id="buttons">
-      <button type="button" @click="onClickRead"><span v-if="abortController!=null">stop </span> read</button>
-      <button type="button" @click="onClickWrite">write</button>
+    <div id="play" v-if="!modeProgram">
+      <div id="playTitle">
+        <h1>{{ title }}</h1>
+      </div>
+      <div id="playImage">
+        <template v-for="(entry, index) in entries.filter((item)=>item.type==typeImage)" :key="index">
+          <img :src="entry.value">
+        </template>
+      </div>
+      <div id="playText">
+        <template v-for="(entry, index) in entries.filter((item)=>item.type==typeInfo)" :key="index">
+          <p> {{ entry.value }} </p>
+        </template>
+      </div>
+      <div id="playLink">
+        <template v-for="(entry, index) in entries.filter((item)=>item.type==typeLink)" :key="index">
+          <a :href="entry.value" target="_blank">Mehr {{ index+1}}</a>
+        </template>
+      </div>
     </div>
-    <div id ="log">
-      <textarea rows="10"  v-model="log"></textarea>
-    </div>
+    <button type="button" class="btn-bottom-right" @click="onClickChangeMode()">{{ modeProgram ? "play" : "program"}}</button>
   </main>
 </template>
 
@@ -153,6 +205,12 @@ header {
 .logo {
   display: block;
   margin: 0 auto 2rem;
+}
+
+.btn-bottom-right {
+  position: fixed;
+  bottom: 3px;
+  right: 3px;
 }
 
 @media (min-width: 1024px) {
